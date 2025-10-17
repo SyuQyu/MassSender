@@ -1,0 +1,14 @@
+{
+  "name": "masssender-whatsapp-worker",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "qrcode": "^1.5.3",
+    "whatsapp-web.js": "^1.23.1"
+  }
+}
