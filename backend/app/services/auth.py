@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -20,18 +21,28 @@ async def create_user(db: AsyncSession, data: UserCreate) -> User:
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+
     user = User(
         email=data.email,
         hashed_password=get_password_hash(data.password),
         full_name=data.full_name,
         timezone=data.timezone,
-        consent_acceptance_at=datetime.now(timezone.utc) if data.consent else None,
+        consent_acceptance_at=now if data.consent else None,
     )
 
     db.add(user)
     await db.flush()
 
-    await create_wallet_transaction(db, user, WalletTxnType.ALLOCATION, 0, "initial")
+    await create_wallet_transaction(
+        db,
+        user,
+        WalletTxnType.ALLOCATION,
+        settings.default_signup_points,
+        "signup_allocation",
+        expires_at=now + timedelta(days=15),
+    )
 
     await db.commit()
     await db.refresh(user)

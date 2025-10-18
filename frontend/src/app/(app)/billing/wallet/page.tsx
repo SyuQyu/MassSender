@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { WalletCard } from "@/components/wallet-card";
 import { apiClient } from "@/lib/api-client";
-import type { WalletSummary, WalletTransaction } from "@/types/api";
+import type { WalletGrantResult, WalletSummary, WalletTransaction } from "@/types/api";
 
 const fetchSummary = async () => {
   const { data } = await apiClient.get<WalletSummary>("/wallet");
@@ -24,7 +24,7 @@ export default function WalletPage() {
   });
 
   const mutation = useMutation({
-    mutationFn: (payload: { plan_type?: string | null; points?: number | null }) =>
+    mutationFn: (payload: { plan_type?: string | null; points?: number | null; expires_in_days?: number | null }) =>
       apiClient.post<WalletSummary>("/wallet/topup", payload),
     onSuccess: () => {
       void refetchSummary();
@@ -34,6 +34,15 @@ export default function WalletPage() {
 
   const coinMutation = useMutation({
     mutationFn: (points: number) => apiClient.post<WalletSummary>("/wallet/coins", { points }),
+    onSuccess: () => {
+      void refetchSummary();
+      void refetchTransactions();
+    },
+  });
+
+  const grantMutation = useMutation({
+    mutationFn: (payload: { user_email: string; points: number; expires_in_days?: number | null }) =>
+      apiClient.post<WalletGrantResult>("/wallet/grant", payload),
     onSuccess: () => {
       void refetchSummary();
       void refetchTransactions();
@@ -55,6 +64,9 @@ export default function WalletPage() {
         }}
         onPurchaseCoins={async (points) => {
           await coinMutation.mutateAsync(points);
+        }}
+        onGrant={async (payload) => {
+          await grantMutation.mutateAsync(payload);
         }}
       />
       <div className="space-y-3">

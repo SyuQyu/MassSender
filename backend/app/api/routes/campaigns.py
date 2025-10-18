@@ -25,13 +25,49 @@ from app.services import campaigns as campaigns_service
 router = APIRouter()
 
 
+def _serialize_campaign(campaign: Campaign) -> CampaignRead:
+    return CampaignRead(
+        id=campaign.id,
+        name=campaign.name,
+        status=campaign.status,
+        list_id=campaign.list_id,
+        user_id=campaign.user_id,
+        template_body=campaign.template_body,
+        template_variables=campaign.template_variables,
+        media_url=campaign.media_url,
+        document_url=campaign.document_url,
+        throttle_min_seconds=campaign.throttle_min_seconds,
+        throttle_max_seconds=campaign.throttle_max_seconds,
+        scheduled_at=campaign.scheduled_at,
+        started_at=campaign.started_at,
+        completed_at=campaign.completed_at,
+        created_at=campaign.created_at,
+        metadata=campaign.meta,
+    )
+
+
+def _serialize_recipient(recipient) -> CampaignRecipientRead:
+    return CampaignRecipientRead(
+        id=recipient.id,
+        name=recipient.name,
+        phone_e164=recipient.phone_e164,
+        status=recipient.status,
+        attempts=recipient.attempts,
+        sent_at=recipient.sent_at,
+        read_at=recipient.read_at,
+        last_error=recipient.last_error,
+        created_at=recipient.created_at,
+        updated_at=recipient.updated_at,
+    )
+
+
 @router.get("/", response_model=list[CampaignRead])
 async def list_campaigns(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> list[CampaignRead]:
     campaigns = await campaigns_service.list_campaigns(db, current_user)
-    return [CampaignRead.model_validate(c) for c in campaigns]
+    return [_serialize_campaign(c) for c in campaigns]
 
 
 @router.post("/", response_model=CampaignRead, status_code=status.HTTP_201_CREATED)
@@ -41,7 +77,7 @@ async def create_campaign(
     current_user: User = Depends(get_current_active_user),
 ) -> CampaignRead:
     campaign = await campaigns_service.create_campaign(db, current_user, payload)
-    return CampaignRead.model_validate(campaign)
+    return _serialize_campaign(campaign)
 
 
 @router.get("/{campaign_id}", response_model=CampaignRead)
@@ -51,7 +87,7 @@ async def get_campaign(
     current_user: User = Depends(get_current_active_user),
 ) -> CampaignRead:
     campaign = await campaigns_service.get_campaign(db, current_user, campaign_id)
-    return CampaignRead.model_validate(campaign)
+    return _serialize_campaign(campaign)
 
 
 @router.get("/{campaign_id}/recipients", response_model=list[CampaignRecipientRead])
@@ -62,7 +98,7 @@ async def get_recipients(
 ) -> list[CampaignRecipientRead]:
     campaign = await campaigns_service.get_campaign(db, current_user, campaign_id)
     recipients = await campaigns_service.get_campaign_recipients(db, campaign)
-    return [CampaignRecipientRead.model_validate(r) for r in recipients]
+    return [_serialize_recipient(r) for r in recipients]
 
 
 @router.post("/{campaign_id}/start", response_model=CampaignActionResponse)

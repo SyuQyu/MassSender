@@ -39,8 +39,42 @@ export default function DashboardPage() {
     [campaigns],
   );
 
+  const supportInfo = useMemo(() => {
+    if (!wallet?.support_whatsapp_number) {
+      return null;
+    }
+    const digits = wallet.support_whatsapp_number.replace(/[^\d]/g, "");
+    const display = wallet.support_whatsapp_number.startsWith("+")
+      ? wallet.support_whatsapp_number
+      : `+${wallet.support_whatsapp_number}`;
+    return {
+      display,
+      link: digits ? `https://wa.me/${digits}` : null,
+    };
+  }, [wallet?.support_whatsapp_number]);
+
+  const showLowBalanceNotice = (wallet?.balance ?? 0) <= 0;
+
   return (
     <div className="space-y-8">
+      {showLowBalanceNotice ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          Wallet balance is empty. Top up before sending campaigns.
+          {supportInfo ? (
+            <>
+              {" "}
+              {supportInfo.link ? (
+                <a href={supportInfo.link} target="_blank" rel="noreferrer" className="font-semibold underline">
+                  WhatsApp Pandu ({supportInfo.display})
+                </a>
+              ) : (
+                <>Contact Pandu at {supportInfo.display}</>
+              )}
+              .
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <section className="grid gap-6 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-slate-900 p-6 text-white shadow-sm">
           <p className="text-sm uppercase tracking-wide text-slate-200">Balance</p>

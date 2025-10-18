@@ -133,7 +133,7 @@ async def start_campaign(db: AsyncSession, user: User, campaign: Campaign) -> Ca
     campaign.status = CampaignStatus.QUEUED
     campaign.started_at = datetime.now(UTC)
     await db.commit()
-    await db.refresh(campaign)
+    await db.refresh(campaign, attribute_names=["recipients"])
 
     for recipient in campaign.recipients:
         _enqueue_recipient(recipient)

@@ -56,6 +56,15 @@ const client = new Client({
   },
 });
 
+function scheduleReinitialize(delay = 1000) {
+  setTimeout(() => {
+    console.log('Reinitializing WhatsApp client');
+    client.initialize().catch((err) => {
+      console.error('Failed to reinitialize client', err);
+    });
+  }, delay);
+}
+
 client.on('loading_screen', (percent, message) => {
   console.log('Loading screen', percent, message);
 });
@@ -88,6 +97,7 @@ client.on('auth_failure', (msg) => {
   console.error('Auth failure', msg);
   currentStatus = 'auth_failure';
   qrDataUrl = null;
+  scheduleReinitialize(2000);
 });
 
 client.on('disconnected', (reason) => {
@@ -95,7 +105,7 @@ client.on('disconnected', (reason) => {
   currentStatus = 'disconnected';
   qrDataUrl = null;
   lastSeen = null;
-  client.initialize();
+  scheduleReinitialize(2000);
 });
 
 client.initialize();
@@ -192,13 +202,8 @@ app.post('/logout', async (_req, res) => {
   qrDataUrl = null;
   lastSeen = null;
 
-  try {
-    client.initialize();
-    res.json({ status: 'ok' });
-  } catch (err) {
-    console.error('Failed to reinitialize client', err);
-    res.status(500).json({ error: 'Failed to reinitialize client' });
-  }
+  scheduleReinitialize(2000);
+  res.json({ status: 'ok' });
 });
 
 app.listen(PORT, () => {

@@ -25,6 +25,10 @@ WORKER_STATUS_MAP = {
 }
 
 
+class WorkerUnavailableError(RuntimeError):
+    """Raised when the WhatsApp worker cannot be reached."""
+
+
 def _worker_base_url() -> str:
     settings = get_settings()
     return settings.whatsapp_worker_url.unicode_string().rstrip("/")
@@ -33,11 +37,19 @@ def _worker_base_url() -> str:
 async def _request_worker(method: str, path: str, *, json: dict[str, Any] | None = None) -> dict[str, Any]:
     url = f"{_worker_base_url()}{path}"
     async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.request(method, url, json=json)
-        if response.status_code >= 400:
+        try:
+            response = await client.request(method, url, json=json)
             response.raise_for_status()
+        except httpx.HTTPStatusError:
+            # Let callers decide how to handle specific HTTP errors (409, 5xx, etc).
+            raise
+        except httpx.RequestError as exc:
+            raise WorkerUnavailableError(str(exc)) from exc
         if response.content:
-            return response.json()
+            try:
+                return response.json()
+            except ValueError:
+                logger.warning("Worker returned non-JSON payload for %s %s", method, path)
         return {}
 
 
@@ -117,6 +129,9 @@ async def expire_idle_sessions(db: AsyncSession, user: User) -> None:
 async def _fetch_worker_status() -> dict[str, Any]:
     try:
         return await _request_worker("GET", "/status")
+    except WorkerUnavailableError as exc:
+        logger.warning("Worker unavailable while fetching status: %s", exc)
+        return {"status": "error", "message": str(exc)}
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to fetch WhatsApp worker status: %s", exc)
         return {"status": "error"}
@@ -142,6 +157,12 @@ async def list_sessions(db: AsyncSession, user: User) -> list[WhatsAppSession]:
 async def create_session(db: AsyncSession, user: User) -> WhatsAppSession:
     try:
         await _request_worker("POST", "/logout")
+    except WorkerUnavailableError as exc:
+        logger.warning("Worker unavailable when creating session: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="WhatsApp worker unavailable. Restart the worker service and try again.",
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to reset worker before creating session: %s", exc)
     session = await get_or_create_session(db, user, create_if_missing=True)
@@ -157,6 +178,12 @@ async def refresh_session(db: AsyncSession, user: User, session_id: UUID) -> Wha
         _apply_worker_payload(session, worker_data)
         await db.commit()
         await db.refresh(session)
+    except WorkerUnavailableError as exc:
+        logger.warning("Worker unavailable while refreshing session %s: %s", session_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="WhatsApp worker unavailable. Restart the worker service and try again.",
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to refresh session %s: %s", session_id, exc)
         await db.commit()
@@ -167,6 +194,12 @@ async def delete_session(db: AsyncSession, user: User, session_id) -> None:
     session = await _get_session(db, user, session_id)
     try:
         await _request_worker("POST", "/logout")
+    except WorkerUnavailableError as exc:
+        logger.warning("Worker unavailable during logout: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="WhatsApp worker unavailable. Restart the worker service and try again.",
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to logout worker: %s", exc)
     await db.delete(session)
@@ -193,6 +226,12 @@ async def fetch_groups() -> list[dict[str, Any]]:
         if exc.response.status_code == status.HTTP_409_CONFLICT:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="WhatsApp session not linked") from exc
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="WhatsApp worker unavailable") from exc
+    except WorkerUnavailableError as exc:
+        logger.warning("Failed to fetch groups: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="WhatsApp worker unavailable. Restart the worker service and try again.",
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to fetch groups: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="WhatsApp worker unavailable") from exc
@@ -219,6 +258,12 @@ async def fetch_group_members(group_id: str) -> list[dict[str, Any]]:
         if exc.response.status_code == status.HTTP_404_NOT_FOUND:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found") from exc
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="WhatsApp worker unavailable") from exc
+    except WorkerUnavailableError as exc:
+        logger.warning("Failed to fetch group members: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="WhatsApp worker unavailable. Restart the worker service and try again.",
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to fetch group members: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="WhatsApp worker unavailable") from exc
@@ -237,6 +282,12 @@ async def send_group_message(group_id: str, body: str, media_url: str | None, do
         if exc.response.status_code == status.HTTP_409_CONFLICT:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="WhatsApp session not linked") from exc
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="WhatsApp worker unavailable") from exc
+    except WorkerUnavailableError as exc:
+        logger.warning("Failed to send group message: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="WhatsApp worker unavailable. Restart the worker service and try again.",
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to send group message: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="WhatsApp worker unavailable") from exc
@@ -262,6 +313,12 @@ async def send_group_member_message(
         if exc.response.status_code == status.HTTP_409_CONFLICT:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="WhatsApp session not linked") from exc
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="WhatsApp worker unavailable") from exc
+    except WorkerUnavailableError as exc:
+        logger.warning("Failed to send member message: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="WhatsApp worker unavailable. Restart the worker service and try again.",
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to send member message: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="WhatsApp worker unavailable") from exc

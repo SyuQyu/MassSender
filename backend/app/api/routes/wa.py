@@ -21,6 +21,32 @@ from app.services import session as session_service
 router = APIRouter()
 
 
+def _serialize_session(session: WhatsAppSession) -> SessionRead:
+    return SessionRead(
+        id=session.id,
+        status=session.status,
+        label=session.label,
+        device_name=session.device_name,
+        qr_png=session.qr_png,
+        metadata=session.meta,
+        expires_at=session.expires_at,
+        last_seen_at=session.last_seen_at,
+        created_at=session.created_at,
+    )
+
+
+async def _ensure_linked_session(
+    db: AsyncSession,
+    user: User,
+) -> WhatsAppSession:
+    wa_session = await session_service.get_or_create_session(db, user, create_if_missing=False)
+    if wa_session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No connection available")
+    if wa_session.status != SessionStatus.LINKED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="WhatsApp session not linked")
+    return wa_session
+
+
 @router.get("/session", response_model=SessionRead)
 async def get_session(
     db: AsyncSession = Depends(get_db),
@@ -29,7 +55,7 @@ async def get_session(
     wa_session = await session_service.get_or_create_session(db, current_user, create_if_missing=False)
     if wa_session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No connection available")
-    return SessionRead.model_validate(wa_session)
+    return _serialize_session(wa_session)
 
 
 @router.get("/sessions", response_model=list[SessionRead])
@@ -38,7 +64,7 @@ async def list_sessions(
     current_user: User = Depends(get_current_active_user),
 ) -> list[SessionRead]:
     sessions = await session_service.list_sessions(db, current_user)
-    return [SessionRead.model_validate(session) for session in sessions]
+    return [_serialize_session(session) for session in sessions]
 
 
 @router.post("/sessions", response_model=SessionRead, status_code=status.HTTP_201_CREATED)
@@ -47,7 +73,7 @@ async def create_connection(
     current_user: User = Depends(get_current_active_user),
 ) -> SessionRead:
     session = await session_service.create_session(db, current_user)
-    return SessionRead.model_validate(session)
+    return _serialize_session(session)
 
 
 @router.post("/sessions/{session_id}/refresh", response_model=SessionRead)
@@ -57,7 +83,7 @@ async def refresh_connection(
     current_user: User = Depends(get_current_active_user),
 ) -> SessionRead:
     session = await session_service.refresh_session(db, current_user, session_id)
-    return SessionRead.model_validate(session)
+    return _serialize_session(session)
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -78,7 +104,9 @@ async def mock_link_session(
 
     await session_service.expire_idle_sessions(db, current_user)
     wa_session = await session_service.get_or_create_session(db, current_user)
-    return SessionRead.model_validate(wa_session)
+    if wa_session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No connection available")
+    return _serialize_session(wa_session)
 
 
 @router.get("/session/status", response_model=SessionStatusResponse)
@@ -99,6 +127,7 @@ async def list_groups(
     current_user: User = Depends(get_current_active_user),
 ) -> list[WhatsAppGroup]:
     await session_service.expire_idle_sessions(db, current_user)
+    await _ensure_linked_session(db, current_user)
     groups = await session_service.fetch_groups()
     return [WhatsAppGroup.model_validate(group) for group in groups]
 
@@ -110,6 +139,7 @@ async def list_group_members(
     current_user: User = Depends(get_current_active_user),
 ) -> list[WhatsAppGroupMember]:
     await session_service.expire_idle_sessions(db, current_user)
+    await _ensure_linked_session(db, current_user)
     members = await session_service.fetch_group_members(group_id)
     return [WhatsAppGroupMember.model_validate(member) for member in members]
 
@@ -122,6 +152,7 @@ async def send_group_message(
     current_user: User = Depends(get_current_active_user),
 ) -> dict[str, str]:
     await session_service.expire_idle_sessions(db, current_user)
+    await _ensure_linked_session(db, current_user)
     await session_service.send_group_message(group_id, payload.body or "", payload.media_url, payload.document_url)
     return {"status": "queued"}
 
@@ -134,6 +165,7 @@ async def send_group_member_message(
     current_user: User = Depends(get_current_active_user),
 ) -> dict[str, str]:
     await session_service.expire_idle_sessions(db, current_user)
+    await _ensure_linked_session(db, current_user)
     await session_service.send_group_member_message(
         payload.phone_e164,
         payload.body or "",
