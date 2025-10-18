@@ -43,6 +43,7 @@ class ContactListRead(ContactListBase):
 
 class GroupImportRequest(BaseModel):
     group_name: str
+    session_id: UUID
 
 
 class GroupImportPreview(BaseModel):

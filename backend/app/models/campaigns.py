@@ -43,6 +43,9 @@ class Campaign(Base):
     throttle_min_seconds: Mapped[int] = mapped_column(Integer, default=2)
     throttle_max_seconds: Mapped[int] = mapped_column(Integer, default=5)
     status: Mapped[CampaignStatus] = mapped_column(Enum(CampaignStatus, name="campaign_status"), default=CampaignStatus.DRAFT)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("wa_sessions.id", ondelete="SET NULL"), nullable=True
+    )
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -51,6 +54,7 @@ class Campaign(Base):
 
     user: Mapped["User"] = relationship(back_populates="campaigns")
     contact_list: Mapped["ContactList"] = relationship(back_populates="campaigns")
+    session: Mapped["WhatsAppSession | None"] = relationship(back_populates="campaigns")
     recipients: Mapped[list["CampaignRecipient"]] = relationship(
         back_populates="campaign", cascade="all, delete-orphan"
     )

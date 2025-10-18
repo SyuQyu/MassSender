@@ -55,7 +55,9 @@ export default function AutomationRulesPage() {
               <div>
                 <p className="font-medium text-slate-900">{rule.name}</p>
                 <p className="text-xs text-slate-500">
-                  Trigger: {rule.trigger_type} → {rule.trigger_value} • Cooldown: {rule.cooldown_seconds}s
+                  Trigger: {rule.trigger_type} → {rule.trigger_value} •
+                  {" "}
+                  {rule.cooldown_seconds ? `${rule.cooldown_seconds}s cooldown` : "No cooldown"}
                 </p>
                 <p className="text-sm text-slate-600">{rule.response_text}</p>
               </div>

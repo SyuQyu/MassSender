@@ -162,9 +162,11 @@ async def handle_inbound(db: AsyncSession, user: User, payload: InboundMessage) 
         )
         log = log_result.scalar_one_or_none()
         if log:
-            delta = (timestamp - log.last_triggered_at).total_seconds()
-            if delta < rule.cooldown_seconds:
-                continue
+            cooldown = rule.cooldown_seconds or 0
+            if cooldown > 0:
+                delta = (timestamp - log.last_triggered_at).total_seconds()
+                if delta < cooldown:
+                    continue
             log.last_triggered_at = timestamp
         else:
             log = AutoResponseLog(rule_id=rule.id, contact_phone=payload.contact_phone, last_triggered_at=timestamp)

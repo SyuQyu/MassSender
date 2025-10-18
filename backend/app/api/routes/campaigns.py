@@ -13,6 +13,7 @@ from app.core.security import decode_token
 from app.db.session import async_session
 from app.models import Campaign, CampaignStatus, User
 from app.schemas.campaigns import (
+    ActiveCampaignSummary,
     CampaignActionResponse,
     CampaignCreate,
     CampaignProgress,
@@ -32,6 +33,8 @@ def _serialize_campaign(campaign: Campaign) -> CampaignRead:
         status=campaign.status,
         list_id=campaign.list_id,
         user_id=campaign.user_id,
+        session_id=campaign.session_id,
+        session_label=campaign.session.label if campaign.session else None,
         template_body=campaign.template_body,
         template_variables=campaign.template_variables,
         media_url=campaign.media_url,
@@ -78,6 +81,27 @@ async def create_campaign(
 ) -> CampaignRead:
     campaign = await campaigns_service.create_campaign(db, current_user, payload)
     return _serialize_campaign(campaign)
+
+
+@router.get("/active", response_model=list[ActiveCampaignSummary])
+async def list_active_campaigns(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[ActiveCampaignSummary]:
+    active_items = await campaigns_service.list_active_campaigns(db, current_user)
+    summaries: list[ActiveCampaignSummary] = []
+    for campaign, progress in active_items:
+        summaries.append(
+            ActiveCampaignSummary(
+                id=campaign.id,
+                name=campaign.name,
+                status=campaign.status,
+                session_id=campaign.session_id,
+                session_label=campaign.session.label if campaign.session else None,
+                progress=CampaignProgress(status=campaign.status, **progress),
+            )
+        )
+    return summaries
 
 
 @router.get("/{campaign_id}", response_model=CampaignRead)
@@ -130,7 +154,7 @@ async def resume(
     current_user: User = Depends(get_current_active_user),
 ) -> CampaignActionResponse:
     campaign = await campaigns_service.get_campaign(db, current_user, campaign_id)
-    campaign = await campaigns_service.resume_campaign(db, campaign)
+    campaign = await campaigns_service.resume_campaign(db, current_user, campaign)
     return CampaignActionResponse(id=campaign.id, status=campaign.status, detail="Campaign resumed")
 
 

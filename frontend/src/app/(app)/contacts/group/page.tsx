@@ -1,19 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { GroupPicker } from "@/components/group-picker";
 import { apiClient } from "@/lib/api-client";
-import type { ContactList, WhatsAppGroup, WhatsAppMember } from "@/types/api";
+import type { ContactList, Session, WhatsAppGroup, WhatsAppMember } from "@/types/api";
 
-const fetchGroups = async () => {
-  const { data } = await apiClient.get<WhatsAppGroup[]>("/wa/groups");
+const STORAGE_KEY = "ms_group_import";
+
+const fetchSessions = async () => {
+  const { data } = await apiClient.get<Session[]>("/wa/sessions");
   return data;
 };
 
-const fetchGroupMembers = async (groupId: string) => {
-  const { data } = await apiClient.get<WhatsAppMember[]>(`/wa/groups/${groupId}/members`);
+const fetchGroups = async (sessionId: string) => {
+  const { data } = await apiClient.get<WhatsAppGroup[]>(`/wa/sessions/${sessionId}/groups`);
+  return data;
+};
+
+const fetchGroupMembers = async (sessionId: string, groupId: string) => {
+  const { data } = await apiClient.get<WhatsAppMember[]>(`/wa/sessions/${sessionId}/groups/${groupId}/members`);
   return data;
 };
 
@@ -27,22 +34,113 @@ export default function GroupImportPage() {
   const [groupMessage, setGroupMessage] = useState("");
   const [memberMessages, setMemberMessages] = useState<Record<string, string>>({});
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string>("");
+  const [hydrated, setHydrated] = useState(false);
+  const [pendingGroupId, setPendingGroupId] = useState<string | null>(null);
+
+  const { data: sessions } = useQuery({ queryKey: ["wa", "sessions"], queryFn: fetchSessions });
+  const selectedSession = useMemo(
+    () => sessions?.find((session) => session.id === sessionId) ?? null,
+    [sessions, sessionId],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as {
+          sessionId?: string;
+          groupName?: string;
+          searchTerm?: string;
+          selectedGroupId?: string;
+        };
+        if (parsed.sessionId) {
+          setSessionId(parsed.sessionId);
+        }
+        if (parsed.groupName) {
+          setGroupName(parsed.groupName);
+        }
+        if (parsed.searchTerm) {
+          setSearchTerm(parsed.searchTerm);
+        }
+        if (parsed.selectedGroupId) {
+          setPendingGroupId(parsed.selectedGroupId);
+        }
+      } catch {
+        // ignore parsing errors
+      }
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!sessionId && sessions?.length) {
+      setSessionId(sessions[0].id);
+    }
+  }, [hydrated, sessions, sessionId]);
 
   const groupsQuery = useQuery({
-    queryKey: ["wa", "groups"],
-    queryFn: fetchGroups,
-    enabled: false,
+    queryKey: ["wa", "groups", sessionId],
+    queryFn: () => fetchGroups(sessionId!),
+    enabled: Boolean(sessionId && selectedSession?.status === "linked"),
+    staleTime: 300_000,
+    cacheTime: 1_800_000,
+    refetchOnWindowFocus: false,
+    onSuccess: () => {
+      setGroupsError(null);
+    },
+    onError: () => {
+      setGroupsError("Unable to fetch groups. Ensure the device is linked and online.");
+    },
   });
 
   const membersQuery = useQuery({
-    queryKey: ["wa", "groups", selectedGroup?.id, "members"],
-    queryFn: () => fetchGroupMembers(selectedGroup!.id),
+    queryKey: ["wa", "groups", sessionId, selectedGroup?.id, "members"],
+    queryFn: () => fetchGroupMembers(sessionId!, selectedGroup!.id),
     enabled: Boolean(selectedGroup),
+    staleTime: 120_000,
+    cacheTime: 900_000,
+    refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    setSelectedGroup(null);
+    setMemberMessages({});
+    setGroupMessage("");
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!pendingGroupId || !groupsQuery.data) {
+      return;
+    }
+    const match = groupsQuery.data.find((group) => group.id === pendingGroupId);
+    if (match) {
+      setSelectedGroup(match);
+    }
+    setPendingGroupId(null);
+  }, [pendingGroupId, groupsQuery.data]);
+
+  useEffect(() => {
+    if (!hydrated || typeof window === "undefined") return;
+    const payload = {
+      sessionId,
+      groupName,
+      searchTerm,
+      selectedGroupId: selectedGroup?.id ?? null,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }, [hydrated, sessionId, groupName, searchTerm, selectedGroup?.id]);
 
   const importMutation = useMutation({
     mutationFn: async (name: string) => {
-      const { data } = await apiClient.post<ContactList>("/contacts/group", { group_name: name });
+      const { data } = await apiClient.post<ContactList>("/contacts/group", {
+        group_name: name,
+        session_id: sessionId,
+      });
       return data;
     },
     onSuccess: (data) => {
@@ -55,7 +153,8 @@ export default function GroupImportPage() {
   const groupSendMutation = useMutation({
     mutationFn: async () => {
       if (!selectedGroup) throw new Error("No group selected");
-      await apiClient.post(`/wa/groups/${selectedGroup.id}/send`, {
+      if (!selectedSession) throw new Error("No session selected");
+      await apiClient.post(`/wa/sessions/${sessionId}/groups/${selectedGroup.id}/send`, {
         body: groupMessage,
       });
     },
@@ -69,7 +168,8 @@ export default function GroupImportPage() {
   const memberSendMutation = useMutation({
     mutationFn: async ({ phone_e164, body }: { phone_e164: string; body: string }) => {
       if (!selectedGroup) throw new Error("No group selected");
-      await apiClient.post(`/wa/groups/${selectedGroup.id}/members/send`, {
+      if (!selectedSession) throw new Error("No session selected");
+      await apiClient.post(`/wa/sessions/${sessionId}/groups/${selectedGroup.id}/members/send`, {
         phone_e164,
         body,
       });
@@ -82,12 +182,33 @@ export default function GroupImportPage() {
   });
 
   const handleFetchGroups = async () => {
+    if (!selectedSession) {
+      setGroupsError("Select a connection first.");
+      return;
+    }
+    if (selectedSession.status !== "linked") {
+      setGroupsError("Selected session is not linked.");
+      return;
+    }
     setGroupsError(null);
     try {
-      await groupsQuery.refetch();
-    } catch {
-      setGroupsError("Unable to fetch groups. Ensure a device is linked.");
+      await groupsQuery.refetch({ throwOnError: true });
+    } catch (error) {
+      console.error(error);
+      setGroupsError("Unable to fetch groups. Ensure the device is linked and online.");
     }
+  };
+
+  const handleImportGroup = (groupNameValue: string) => {
+    if (!selectedSession) {
+      setImportError("Select a connection first.");
+      return;
+    }
+    if (selectedSession.status !== "linked") {
+      setImportError("This session is not linked. Scan the QR code before importing.");
+      return;
+    }
+    importMutation.mutate(groupNameValue);
   };
 
   const filteredGroups = useMemo(() => {
@@ -111,12 +232,30 @@ export default function GroupImportPage() {
         </p>
       </div>
 
-      <GroupPicker
-        value={groupName}
-        onChange={setGroupName}
-        onSubmit={(group) => importMutation.mutate(group)}
-        loading={importMutation.isPending}
-      />
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+          WhatsApp connection
+          <select
+            value={sessionId}
+            onChange={(event) => setSessionId(event.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2 shadow-sm focus:border-slate-400 focus:outline-none"
+          >
+            <option value="">Select a connection</option>
+            {sessions?.map((session) => (
+              <option key={session.id} value={session.id}>
+                {session.label} · {session.status}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedSession && selectedSession.status !== "linked" ? (
+          <p className="mt-2 text-xs text-amber-600">
+            This connection is {selectedSession.status}. Scan the QR code in the Sessions tab before importing or sending messages.
+          </p>
+        ) : null}
+      </div>
+
+      <GroupPicker value={groupName} onChange={setGroupName} onSubmit={handleImportGroup} loading={importMutation.isPending} />
       {importError ? <p className="text-sm text-rose-600">{importError}</p> : null}
       {result ? (
         <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
@@ -147,7 +286,7 @@ export default function GroupImportPage() {
             <button
               onClick={handleFetchGroups}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-900 disabled:opacity-70"
-              disabled={groupsQuery.isFetching}
+              disabled={groupsQuery.isFetching || !selectedSession}
             >
               {groupsQuery.isFetching ? "Loading…" : "Fetch groups"}
             </button>
@@ -212,7 +351,7 @@ export default function GroupImportPage() {
             <button
               onClick={() => membersQuery.refetch()}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-900 disabled:opacity-70"
-              disabled={membersQuery.isFetching}
+              disabled={membersQuery.isFetching || !selectedSession}
             >
               {membersQuery.isFetching ? "Refreshing…" : "Refresh members"}
             </button>
@@ -230,7 +369,12 @@ export default function GroupImportPage() {
             <button
               onClick={() => groupSendMutation.mutate()}
               className="mt-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              disabled={groupSendMutation.isLoading || !groupMessage.trim()}
+              disabled={
+                groupSendMutation.isLoading ||
+                !groupMessage.trim() ||
+                !selectedSession ||
+                selectedSession.status !== "linked"
+              }
             >
               {groupSendMutation.isLoading ? "Sending…" : "Send to group"}
             </button>
@@ -267,7 +411,10 @@ export default function GroupImportPage() {
                       }
                       className="mt-2 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
                       disabled={
-                        memberSendMutation.isLoading || !(memberMessages[member.phone_e164] ?? "").trim()
+                        memberSendMutation.isLoading ||
+                        !(memberMessages[member.phone_e164] ?? "").trim() ||
+                        !selectedSession ||
+                        selectedSession.status !== "linked"
                       }
                     >
                       {memberSendMutation.isLoading ? "Sending…" : "Send to member"}

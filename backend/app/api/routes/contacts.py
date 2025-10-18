@@ -1,10 +1,10 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, get_db
-from app.models import ContactSource, SessionStatus, User
+from app.models import ContactSource, User
 from app.schemas.contacts import ContactListCreate, ContactListRead, ContactRead, GroupImportRequest
 from app.services import contacts as contacts_service
 from app.services import groups as groups_service
@@ -57,8 +57,6 @@ async def import_group(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> ContactListRead:
-    wa_session = await session_service.get_or_create_session(db, current_user)
-    if wa_session.status != SessionStatus.LINKED:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session not linked")
+    wa_session = await session_service.ensure_linked_session(db, current_user, payload.session_id)
     contact_list = await groups_service.import_group_contacts(db, current_user, wa_session, payload)
     return contact_list

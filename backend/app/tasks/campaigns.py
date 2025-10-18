@@ -27,16 +27,17 @@ from app.tasks.db import SessionLocal
 settings = get_settings()
 
 
-def _requeue(recipient_id, delay: int) -> None:
+def _requeue(recipient_id, delay: int, session_id: UUID | None) -> None:
     queue = Queue("campaigns", connection=Redis.from_url(settings.redis_url))
     queue.enqueue_in(
         timedelta(seconds=delay),
         "app.tasks.campaigns.process_campaign_recipient",
         str(recipient_id),
+        str(session_id) if session_id else None,
     )
 
 
-def process_campaign_recipient(recipient_id: str) -> None:
+def process_campaign_recipient(recipient_id: str, session_id: str | None = None) -> None:
     recipient_uuid = UUID(recipient_id)
 
     with SessionLocal() as session:
@@ -47,6 +48,12 @@ def process_campaign_recipient(recipient_id: str) -> None:
             return
 
         campaign = recipient.campaign
+        campaign_session_id = campaign.session_id
+        if session_id:
+            try:
+                campaign_session_id = UUID(session_id)
+            except ValueError:
+                campaign_session_id = campaign.session_id
         if campaign.status == CampaignStatus.CANCELLED:
             recipient.status = DeliveryStatus.FAILED
             recipient.last_error = "Campaign cancelled"
@@ -55,7 +62,7 @@ def process_campaign_recipient(recipient_id: str) -> None:
 
         if campaign.status == CampaignStatus.PAUSED:
             session.commit()
-            _requeue(recipient.id, delay=15)
+            _requeue(recipient.id, delay=15, session_id=campaign_session_id)
             return
 
         recipient.status = DeliveryStatus.SENDING
@@ -71,7 +78,13 @@ def process_campaign_recipient(recipient_id: str) -> None:
     time.sleep(throttle_delay)
 
     try:
-        send_campaign_message(phone=phone, body=message_body, media_url=media_url, document_url=document_url)
+        send_campaign_message(
+            phone=phone,
+            body=message_body,
+            media_url=media_url,
+            document_url=document_url,
+            session_id=campaign_session_id,
+        )
     except MessagingRetryableError as exc:
         logger.warning("Retryable messaging failure for %s: %s", phone, exc)
         _handle_failure(recipient_uuid, transient=True, error_message=str(exc))
@@ -101,7 +114,7 @@ def _handle_failure(recipient_id: UUID, transient: bool, error_message: str | No
             recipient.last_error = error_message or "Transient failure; retry scheduled"
             session.commit()
 
-            _requeue(recipient.id, backoff_seconds)
+            _requeue(recipient.id, backoff_seconds, campaign.session_id)
             return
 
         if campaign.status == CampaignStatus.QUEUED:

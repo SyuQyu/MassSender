@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from uuid import UUID
 
 import httpx
 from loguru import logger
@@ -86,7 +87,14 @@ def _send_media(phone: str, link: str, media_type: Literal["image", "video", "do
     _post_payload(payload, context=f"sending {media_type}")
 
 
-def send_campaign_message(*, phone: str, body: str, media_url: str | None, document_url: str | None) -> None:
+def send_campaign_message(
+    *,
+    phone: str,
+    body: str,
+    media_url: str | None,
+    document_url: str | None,
+    session_id: UUID | None = None,
+) -> None:
     """Send a campaign message via WhatsApp."""
 
     settings = get_settings()
@@ -111,13 +119,22 @@ def send_campaign_message(*, phone: str, body: str, media_url: str | None, docum
             _send_media(phone, document_url, "document")
         return
 
-    _send_via_worker(phone=phone, body=body, media_url=media_url, document_url=document_url)
+    _send_via_worker(phone=phone, body=body, media_url=media_url, document_url=document_url, session_id=session_id)
 
 
-def _send_via_worker(*, phone: str, body: str, media_url: str | None, document_url: str | None) -> None:
+def _send_via_worker(
+    *,
+    phone: str,
+    body: str,
+    media_url: str | None,
+    document_url: str | None,
+    session_id: UUID | None,
+) -> None:
     settings = get_settings()
     base_url = settings.whatsapp_worker_url.unicode_string().rstrip("/")
-    url = f"{base_url}/send"
+    if session_id is None:
+        raise MessagingPermanentError("Campaign session is not selected")
+    url = f"{base_url}/sessions/{session_id}/send"
     payload = {
         "to": phone,
         "body": body,

@@ -19,7 +19,7 @@ export const RuleBuilder = ({ onCreate }: RuleBuilderProps) => {
   const [triggerType, setTriggerType] = useState<"keyword" | "contains" | "regex">("keyword");
   const [triggerValue, setTriggerValue] = useState("hi");
   const [responseText, setResponseText] = useState("Hello! Here's our schedule...");
-  const [cooldown, setCooldown] = useState(3600);
+  const [cooldown, setCooldown] = useState(0);
   const [active, setActive] = useState(true);
   const [useWindow, setUseWindow] = useState(false);
   const [windowConfig, setWindowConfig] = useState<TimeWindow>(defaultWindow);
@@ -86,11 +86,12 @@ export const RuleBuilder = ({ onCreate }: RuleBuilderProps) => {
           Cooldown (seconds)
           <input
             type="number"
-            min={60}
+            min={0}
             value={cooldown}
-            onChange={(event) => setCooldown(Number(event.target.value))}
+            onChange={(event) => setCooldown(Math.max(0, Number(event.target.value) || 0))}
             className="rounded-lg border border-slate-200 px-3 py-2 shadow-sm focus:border-slate-400 focus:outline-none"
           />
+          <span className="text-xs font-normal text-slate-500">Set 0 to respond without a delay.</span>
         </label>
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input type="checkbox" checked={useWindow} onChange={(event) => setUseWindow(event.target.checked)} /> Restrict to window

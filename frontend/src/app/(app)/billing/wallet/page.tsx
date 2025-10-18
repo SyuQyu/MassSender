@@ -71,40 +71,60 @@ export default function WalletPage() {
       />
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-slate-900">Transactions</h2>
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-2">Type</th>
-                <th className="px-4 py-2">Points</th>
-                <th className="px-4 py-2">Balance after</th>
-                <th className="px-4 py-2">Reference</th>
-                <th className="px-4 py-2">Expires</th>
-                <th className="px-4 py-2">When</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {transactions?.map((txn) => (
-                <tr key={txn.id} className="bg-white">
-                  <td className="px-4 py-2 capitalize text-slate-700">{txn.txn_type}</td>
-                  <td className="px-4 py-2 text-slate-700">{txn.points}</td>
-                  <td className="px-4 py-2 text-slate-700">{txn.balance_after}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{txn.reference ?? "--"}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">
-                    {txn.expires_at ? new Date(txn.expires_at).toLocaleString() : "--"}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{new Date(txn.created_at).toLocaleString()}</td>
-                </tr>
-              )) ?? (
-                <tr>
-                  <td className="px-4 py-2 text-sm text-slate-500" colSpan={6}>
-                    No transactions yet
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {transactions && transactions.length > 0 ? (
+          <>
+            <div className="space-y-3 md:hidden">
+              {transactions.map((txn) => (
+                <div key={txn.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-slate-900 capitalize">{txn.txn_type}</span>
+                    <span className="text-sm font-semibold text-slate-700">{txn.points} pts</span>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">Balance: {txn.balance_after} pts</p>
+                  <p className="text-xs text-slate-500">Reference: {txn.reference ?? "--"}</p>
+                  <p className="text-xs text-slate-500">
+                    Expires: {txn.expires_at ? new Date(txn.expires_at).toLocaleString() : "--"}
+                  </p>
+                  <p className="text-xs text-slate-500">When: {new Date(txn.created_at).toLocaleString()}</p>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+              <div className="max-h-72 overflow-y-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2">Type</th>
+                      <th className="px-4 py-2">Points</th>
+                      <th className="px-4 py-2">Balance after</th>
+                      <th className="px-4 py-2">Reference</th>
+                      <th className="px-4 py-2">Expires</th>
+                      <th className="px-4 py-2">When</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {transactions.map((txn) => (
+                      <tr key={txn.id} className="bg-white">
+                        <td className="px-4 py-2 capitalize text-slate-700">{txn.txn_type}</td>
+                        <td className="px-4 py-2 text-slate-700">{txn.points}</td>
+                        <td className="px-4 py-2 text-slate-700">{txn.balance_after}</td>
+                        <td className="px-4 py-2 text-xs text-slate-500">{txn.reference ?? "--"}</td>
+                        <td className="px-4 py-2 text-xs text-slate-500">
+                          {txn.expires_at ? new Date(txn.expires_at).toLocaleString() : "--"}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-slate-500">{new Date(txn.created_at).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+            No transactions yet
+          </div>
+        )}
       </div>
     </div>
   );

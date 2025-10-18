@@ -28,9 +28,11 @@ class Settings(BaseSettings):
     session_key: str = Field(alias="SESSION_KEY")
     default_tz: str = Field(default="UTC", alias="DEFAULT_TZ")
 
-    max_campaign_recipients: int = Field(default=200, alias="MAX_CAMPAIGN_RECIPIENTS")
-    max_daily_recipients: int = Field(default=500, alias="MAX_DAILY_RECIPIENTS")
+    max_campaign_recipients: int = Field(default=10_000, alias="MAX_CAMPAIGN_RECIPIENTS")
+    max_daily_recipients: int = Field(default=30_000, alias="MAX_DAILY_RECIPIENTS")
     points_per_recipient: int = Field(default=2, alias="POINTS_PER_RECIPIENT")
+    max_user_sessions: int = Field(default=5, alias="MAX_WHATSAPP_SESSIONS")
+    max_active_campaigns: int = Field(default=5, alias="MAX_ACTIVE_CAMPAIGNS")
 
     campaign_failure_backoff: str = Field(default="30,60,120", alias="CAMPAIGN_FAILURE_BACKOFF")
     auto_response_cooldown_seconds: int = Field(default=3600, alias="AUTO_RESPONSE_COOLDOWN_SECONDS")

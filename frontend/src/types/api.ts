@@ -25,11 +25,17 @@ export type SessionStatus = "waiting" | "linked" | "expired" | "error";
 export type Session = {
   id: string;
   status: SessionStatus;
-  label?: string | null;
+  label: string;
   device_name?: string | null;
+  avatar_color?: string | null;
+  priority: number;
+  linked_devices: string[];
   qr_png?: string | null;
+  metadata?: Record<string, unknown> | null;
   expires_at?: string | null;
   last_seen_at?: string | null;
+  last_qr_at?: string | null;
+  last_error_message?: string | null;
   created_at: string;
 };
 
@@ -56,6 +62,8 @@ export type Campaign = {
   status: string;
   list_id: string;
   user_id: string;
+  session_id?: string | null;
+  session_label?: string | null;
   template_body: string;
   template_variables: string[];
   media_url?: string | null;
@@ -76,6 +84,15 @@ export type CampaignProgress = {
   failed: number;
   read: number;
   status: string;
+};
+
+export type ActiveCampaignSummary = {
+  id: string;
+  name: string;
+  status: string;
+  session_id?: string | null;
+  session_label?: string | null;
+  progress: CampaignProgress;
 };
 
 export type CampaignRecipient = {

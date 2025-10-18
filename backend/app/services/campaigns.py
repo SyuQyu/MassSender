@@ -9,8 +9,9 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from redis import Redis
 from rq import Queue
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.models import (
@@ -23,15 +24,17 @@ from app.models import (
     User,
 )
 from app.schemas.campaigns import CampaignCreate
+from app.services import session as session_service
 from app.services.contacts import get_contact_list, list_contacts
 from app.services.queue import get_queue
 
 
-def _enqueue_recipient(recipient: CampaignRecipient) -> None:
+def _enqueue_recipient(recipient: CampaignRecipient, session_id: UUID | None) -> None:
     queue = get_queue("campaigns")
     queue.enqueue(
         "app.tasks.campaigns.process_campaign_recipient",
         str(recipient.id),
+        str(session_id) if session_id else None,
         job_timeout=600,
     )
 
@@ -46,6 +49,14 @@ async def create_campaign(db: AsyncSession, user: User, payload: CampaignCreate)
     if len(contacts) > settings.max_campaign_recipients:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Campaign recipient cap exceeded")
 
+    resolved_session_id: UUID | None = None
+    if payload.session_id:
+        user_session = await session_service.get_session(db, user, payload.session_id)
+        resolved_session_id = user_session.id
+    else:
+        default_session = await session_service.get_default_session(db, user)
+        resolved_session_id = default_session.id if default_session else None
+
     campaign = Campaign(
         user_id=user.id,
         list_id=contact_list.id,
@@ -58,6 +69,7 @@ async def create_campaign(db: AsyncSession, user: User, payload: CampaignCreate)
         throttle_max_seconds=payload.throttle_max_seconds,
         scheduled_at=payload.scheduled_at,
         meta=payload.metadata or {},
+        session_id=resolved_session_id,
     )
     db.add(campaign)
     await db.flush()
@@ -74,13 +86,15 @@ async def create_campaign(db: AsyncSession, user: User, payload: CampaignCreate)
     db.add_all(recipients)
 
     await db.commit()
-    await db.refresh(campaign, attribute_names=["recipients"])
+    await db.refresh(campaign, attribute_names=["recipients", "session"])
     return campaign
 
 
 async def get_campaign(db: AsyncSession, user: User, campaign_id: UUID) -> Campaign:
     result = await db.execute(
-        select(Campaign).where(Campaign.id == campaign_id, Campaign.user_id == user.id)
+        select(Campaign)
+        .where(Campaign.id == campaign_id, Campaign.user_id == user.id)
+        .options(selectinload(Campaign.session))
     )
     campaign = result.scalar_one_or_none()
     if campaign is None:
@@ -90,9 +104,28 @@ async def get_campaign(db: AsyncSession, user: User, campaign_id: UUID) -> Campa
 
 async def list_campaigns(db: AsyncSession, user: User) -> list[Campaign]:
     result = await db.execute(
-        select(Campaign).where(Campaign.user_id == user.id).order_by(Campaign.created_at.desc())
+        select(Campaign)
+        .where(Campaign.user_id == user.id)
+        .options(selectinload(Campaign.session))
+        .order_by(Campaign.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+async def list_active_campaigns(db: AsyncSession, user: User) -> list[tuple[Campaign, dict[str, int]]]:
+    active_statuses = {CampaignStatus.QUEUED, CampaignStatus.SENDING}
+    result = await db.execute(
+        select(Campaign)
+        .where(Campaign.user_id == user.id, Campaign.status.in_(active_statuses))
+        .options(selectinload(Campaign.session))
+        .order_by(Campaign.created_at.desc())
+    )
+    campaigns = list(result.scalars().all())
+    summaries: list[tuple[Campaign, dict[str, int]]] = []
+    for campaign in campaigns:
+        progress = await compute_campaign_progress(db, campaign)
+        summaries.append((campaign, progress))
+    return summaries
 
 
 async def start_campaign(db: AsyncSession, user: User, campaign: Campaign) -> Campaign:
@@ -115,6 +148,45 @@ async def start_campaign(db: AsyncSession, user: User, campaign: Campaign) -> Ca
     if user.points_balance < required_points:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Insufficient points balance")
 
+    if campaign.session_id is None:
+        default_session = await session_service.get_default_session(db, user)
+        if default_session is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No WhatsApp session available")
+        campaign.session_id = default_session.id
+        campaign.session = default_session
+
+    linked_session = await session_service.ensure_linked_session(db, user, campaign.session_id)
+    campaign.session = linked_session
+
+    active_statuses = {CampaignStatus.QUEUED, CampaignStatus.SENDING}
+    active_count = await db.scalar(
+        select(func.count())
+        .where(
+            Campaign.user_id == user.id,
+            Campaign.id != campaign.id,
+            Campaign.status.in_(active_statuses),
+        )
+    )
+    active_total = int(active_count or 0)
+    if active_total >= settings.max_active_campaigns:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Active campaign limit reached")
+
+    if campaign.session_id is not None:
+        session_active_count = await db.scalar(
+            select(func.count())
+            .where(
+                Campaign.user_id == user.id,
+                Campaign.id != campaign.id,
+                Campaign.session_id == campaign.session_id,
+                Campaign.status.in_(active_statuses),
+            )
+        )
+        if (session_active_count or 0) > 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Selected session already has a running campaign",
+            )
+
     today = datetime.now(UTC).date()
     result = await db.execute(
         select(CampaignRecipient)
@@ -133,10 +205,10 @@ async def start_campaign(db: AsyncSession, user: User, campaign: Campaign) -> Ca
     campaign.status = CampaignStatus.QUEUED
     campaign.started_at = datetime.now(UTC)
     await db.commit()
-    await db.refresh(campaign, attribute_names=["recipients"])
+    await db.refresh(campaign, attribute_names=["recipients", "session"])
 
     for recipient in campaign.recipients:
-        _enqueue_recipient(recipient)
+        _enqueue_recipient(recipient, campaign.session_id)
 
     return campaign
 
@@ -158,22 +230,64 @@ async def pause_campaign(db: AsyncSession, campaign: Campaign) -> Campaign:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Campaign cannot be paused")
     campaign.status = CampaignStatus.PAUSED
     await db.commit()
-    await db.refresh(campaign, attribute_names=["recipients"])
+    await db.refresh(campaign, attribute_names=["recipients", "session"])
     return campaign
 
 
-async def resume_campaign(db: AsyncSession, campaign: Campaign) -> Campaign:
+async def resume_campaign(db: AsyncSession, user: User, campaign: Campaign) -> Campaign:
     if campaign.status != CampaignStatus.PAUSED:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Campaign is not paused")
+    await db.refresh(campaign, attribute_names=["recipients", "session"])
+
+    settings = get_settings()
+
+    if campaign.session_id is None:
+        default_session = await session_service.get_default_session(db, user)
+        if default_session is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No WhatsApp session available")
+        campaign.session_id = default_session.id
+        campaign.session = default_session
+
+    linked_session = await session_service.ensure_linked_session(db, user, campaign.session_id)
+    campaign.session = linked_session
+
+    active_statuses = {CampaignStatus.QUEUED, CampaignStatus.SENDING}
+    active_count = await db.scalar(
+        select(func.count())
+        .where(
+            Campaign.user_id == user.id,
+            Campaign.id != campaign.id,
+            Campaign.status.in_(active_statuses),
+        )
+    )
+    if (active_count or 0) >= settings.max_active_campaigns:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Active campaign limit reached")
+
+    if campaign.session_id is not None:
+        session_active_count = await db.scalar(
+            select(func.count())
+            .where(
+                Campaign.user_id == user.id,
+                Campaign.id != campaign.id,
+                Campaign.session_id == campaign.session_id,
+                Campaign.status.in_(active_statuses),
+            )
+        )
+        if (session_active_count or 0) > 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Selected session already has a running campaign",
+            )
+
     campaign.status = CampaignStatus.QUEUED
     meta = dict(campaign.meta or {})
     meta["consecutive_failures"] = 0
     campaign.meta = meta
     await db.commit()
-    await db.refresh(campaign, attribute_names=["recipients"])
+    await db.refresh(campaign, attribute_names=["recipients", "session"])
     for recipient in campaign.recipients:
         if recipient.status == DeliveryStatus.QUEUED:
-            _enqueue_recipient(recipient)
+            _enqueue_recipient(recipient, campaign.session_id)
     return campaign
 
 

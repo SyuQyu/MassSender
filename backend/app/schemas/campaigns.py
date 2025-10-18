@@ -31,6 +31,7 @@ class CampaignBase(BaseModel):
 class CampaignCreate(CampaignBase):
     list_id: UUID
     metadata: dict[str, Any] | None = None
+    session_id: UUID | None = None
 
 
 class CampaignRead(CampaignBase):
@@ -38,6 +39,8 @@ class CampaignRead(CampaignBase):
     user_id: UUID
     list_id: UUID
     status: CampaignStatus
+    session_id: UUID | None
+    session_label: str | None = None
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
@@ -75,3 +78,12 @@ class CampaignActionResponse(BaseModel):
     id: UUID
     status: CampaignStatus
     detail: str
+
+
+class ActiveCampaignSummary(BaseModel):
+    id: UUID
+    name: str
+    status: CampaignStatus
+    session_id: UUID | None
+    session_label: str | None = None
+    progress: CampaignProgress
