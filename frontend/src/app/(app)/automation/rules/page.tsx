@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { RuleBuilder } from "@/components/rule-builder";
 import { apiClient } from "@/lib/api-client";
@@ -13,11 +14,21 @@ const fetchRules = async () => {
 
 export default function AutomationRulesPage() {
   const { data: rules, refetch } = useQuery({ queryKey: ["automation-rules"], queryFn: fetchRules });
+  const [editingRule, setEditingRule] = useState<AutoResponseRule | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (rule: Omit<AutoResponseRule, "id" | "created_at" | "updated_at">) =>
       apiClient.post<AutoResponseRule>("/automation/rules", rule),
     onSuccess: () => void refetch(),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Omit<AutoResponseRule, "id" | "created_at" | "updated_at"> }) =>
+      apiClient.put<AutoResponseRule>(`/automation/rules/${id}`, payload),
+    onSuccess: () => {
+      setEditingRule(null);
+      void refetch();
+    },
   });
 
   const deleteMutation = useMutation({
@@ -43,10 +54,20 @@ export default function AutomationRulesPage() {
         </p>
       </div>
       <RuleBuilder
-        onCreate={async (payload) => {
+        onSubmit={async (payload) => {
           await createMutation.mutateAsync(payload);
         }}
       />
+      {editingRule ? (
+        <RuleBuilder
+          initialRule={editingRule}
+          submitLabel="Update rule"
+          onSubmit={async (payload) => {
+            await updateMutation.mutateAsync({ id: editingRule.id, payload });
+          }}
+          onCancel={() => setEditingRule(null)}
+        />
+      ) : null}
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-slate-900">Existing rules</h2>
         <div className="space-y-2">
@@ -67,6 +88,12 @@ export default function AutomationRulesPage() {
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                 >
                   {rule.active ? "Disable" : "Enable"}
+                </button>
+                <button
+                  onClick={() => setEditingRule(rule)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  Edit
                 </button>
                 <button
                   onClick={() => deleteMutation.mutate(rule.id)}

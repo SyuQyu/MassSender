@@ -25,6 +25,15 @@ from app.services import session as session_service
 router = APIRouter()
 
 
+async def _ensure_points_available(db: AsyncSession, user: User) -> None:
+    await db.refresh(user, attribute_names=["points_balance"])
+    if user.points_balance <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient points balance. Top up before modifying WhatsApp connections.",
+        )
+
+
 def _serialize_session(session: WhatsAppSession) -> SessionRead:
     return SessionRead(
         id=session.id,
@@ -59,6 +68,7 @@ async def create_session(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> SessionRead:
+    await _ensure_points_available(db, current_user)
     session = await session_service.create_session(
         db,
         current_user,
@@ -86,6 +96,7 @@ async def update_session(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> SessionRead:
+    await _ensure_points_available(db, current_user)
     session = await session_service.update_session(
         db,
         current_user,
@@ -103,6 +114,7 @@ async def delete_session(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> None:
+    await _ensure_points_available(db, current_user)
     await session_service.delete_session(db, current_user, session_id)
 
 

@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { AutoResponseRule, TimeWindow } from "@/types/api";
 
 type RuleBuilderProps = {
-  onCreate: (rule: Omit<AutoResponseRule, "id" | "created_at" | "updated_at">) => Promise<void>;
+  onSubmit: (rule: Omit<AutoResponseRule, "id" | "created_at" | "updated_at">) => Promise<void>;
+  submitLabel?: string;
+  initialRule?: AutoResponseRule | null;
+  onCancel?: () => void;
 };
 
 const defaultWindow: TimeWindow = {
@@ -14,19 +17,67 @@ const defaultWindow: TimeWindow = {
   end_time: "18:00",
 };
 
-export const RuleBuilder = ({ onCreate }: RuleBuilderProps) => {
-  const [name, setName] = useState("Auto-reply");
-  const [triggerType, setTriggerType] = useState<"keyword" | "contains" | "regex">("keyword");
-  const [triggerValue, setTriggerValue] = useState("hi");
-  const [responseText, setResponseText] = useState("Hello! Here's our schedule...");
-  const [cooldown, setCooldown] = useState(0);
-  const [active, setActive] = useState(true);
-  const [useWindow, setUseWindow] = useState(false);
-  const [windowConfig, setWindowConfig] = useState<TimeWindow>(defaultWindow);
+const fallbackRule: Omit<AutoResponseRule, "id" | "created_at" | "updated_at"> = {
+  name: "Auto-reply",
+  trigger_type: "keyword",
+  trigger_value: "hi",
+  response_text: "Hello! Here's our schedule...",
+  response_media_url: null,
+  cooldown_seconds: 0,
+  active: true,
+  active_windows: [],
+};
+
+export const RuleBuilder = ({ onSubmit, submitLabel = "Save rule", initialRule, onCancel }: RuleBuilderProps) => {
+  const rule = initialRule ? { ...fallbackRule, ...initialRule } : fallbackRule;
+
+  const [name, setName] = useState(rule.name);
+  const [triggerType, setTriggerType] = useState<"keyword" | "contains" | "regex">(rule.trigger_type);
+  const [triggerValue, setTriggerValue] = useState(rule.trigger_value);
+  const [responseText, setResponseText] = useState(rule.response_text ?? "");
+  const [cooldown, setCooldown] = useState(rule.cooldown_seconds ?? 0);
+  const [active, setActive] = useState(rule.active);
+  const [useWindow, setUseWindow] = useState(rule.active_windows.length > 0);
+  const [windowConfig, setWindowConfig] = useState<TimeWindow>(
+    rule.active_windows[0] ?? defaultWindow,
+  );
+
+  useEffect(() => {
+    if (!initialRule) {
+      setName(fallbackRule.name);
+      setTriggerType(fallbackRule.trigger_type);
+      setTriggerValue(fallbackRule.trigger_value);
+      setResponseText(fallbackRule.response_text ?? "");
+      setCooldown(fallbackRule.cooldown_seconds);
+      setActive(fallbackRule.active);
+      setUseWindow(false);
+      setWindowConfig(defaultWindow);
+      return;
+    }
+    setName(initialRule.name);
+    setTriggerType(initialRule.trigger_type);
+    setTriggerValue(initialRule.trigger_value);
+    setResponseText(initialRule.response_text ?? "");
+    setCooldown(initialRule.cooldown_seconds ?? 0);
+    setActive(initialRule.active);
+    setUseWindow((initialRule.active_windows ?? []).length > 0);
+    setWindowConfig(initialRule.active_windows[0] ?? defaultWindow);
+  }, [initialRule?.id]);
+
+  const resetForm = () => {
+    setName(fallbackRule.name);
+    setTriggerType(fallbackRule.trigger_type);
+    setTriggerValue(fallbackRule.trigger_value);
+    setResponseText(fallbackRule.response_text ?? "");
+    setCooldown(fallbackRule.cooldown_seconds);
+    setActive(fallbackRule.active);
+    setUseWindow(false);
+    setWindowConfig(defaultWindow);
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    await onCreate({
+    await onSubmit({
       name,
       trigger_type: triggerType,
       trigger_value: triggerValue,
@@ -36,6 +87,9 @@ export const RuleBuilder = ({ onCreate }: RuleBuilderProps) => {
       active,
       active_windows: useWindow ? [windowConfig] : [],
     });
+    if (!initialRule) {
+      resetForm();
+    }
   };
 
   return (
@@ -132,12 +186,23 @@ export const RuleBuilder = ({ onCreate }: RuleBuilderProps) => {
           </label>
         </div>
       ) : null}
-      <button
-        type="submit"
-        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-      >
-        Save rule
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="submit"
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+        >
+          {submitLabel}
+        </button>
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-900"
+          >
+            Cancel
+          </button>
+        ) : null}
+      </div>
     </form>
   );
 };

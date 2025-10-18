@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, get_db
@@ -18,6 +18,15 @@ from app.services import automation as automation_service
 router = APIRouter()
 
 
+async def _ensure_points_available(db: AsyncSession, user: User) -> None:
+    await db.refresh(user, attribute_names=["points_balance"])
+    if user.points_balance <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient points balance. Top up before modifying automation rules.",
+        )
+
+
 @router.get("/rules", response_model=list[AutoResponseRuleRead])
 async def list_rules(
     db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_active_user)
@@ -32,6 +41,7 @@ async def create_rule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> AutoResponseRuleRead:
+    await _ensure_points_available(db, current_user)
     rule = await automation_service.create_rule(db, current_user, payload)
     return AutoResponseRuleRead.model_validate(rule)
 
@@ -43,6 +53,7 @@ async def update_rule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> AutoResponseRuleRead:
+    await _ensure_points_available(db, current_user)
     rule = await automation_service.update_rule(db, current_user, rule_id, payload)
     return AutoResponseRuleRead.model_validate(rule)
 
@@ -53,6 +64,7 @@ async def delete_rule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> None:
+    await _ensure_points_available(db, current_user)
     await automation_service.delete_rule(db, current_user, rule_id)
 
 
@@ -72,5 +84,6 @@ async def set_schedule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> ActiveScheduleRead:
+    await _ensure_points_available(db, current_user)
     schedule = await automation_service.set_active_schedule(db, current_user, payload)
     return ActiveScheduleRead.model_validate(schedule)

@@ -78,6 +78,7 @@ async function notifyAutomation(state, message) {
     message: typeof message.body === 'string' ? message.body : '',
     timestamp: new Date(timestampSeconds * 1000).toISOString(),
   };
+  console.log(`[${state.id}] forwarding inbound from ${phone}: "${payload.message}"`);
 
   try {
     const response = await fetchFn(`${API_BASE_URL}/wa/inbound`, {
