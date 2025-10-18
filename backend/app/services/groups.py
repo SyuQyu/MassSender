@@ -12,7 +12,7 @@ from app.services.contacts import create_contact_list
 
 async def fetch_group_members(session: WhatsAppSession, group_name: str) -> list[dict]:
     settings = get_settings()
-    url = settings.whatsapp_worker_url.rstrip("/") + "/group-members"
+    url = settings.whatsapp_worker_url.unicode_string().rstrip("/") + "/group-members"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, json={"groupName": group_name})

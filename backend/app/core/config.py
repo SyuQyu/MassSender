@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     whatsapp_api_token: str | None = Field(default=None, alias="WHATSAPP_API_TOKEN")
     whatsapp_phone_number_id: str | None = Field(default=None, alias="WHATSAPP_PHONE_NUMBER_ID")
     whatsapp_worker_url: AnyHttpUrl = Field(default="http://localhost:5005", alias="WHATSAPP_WORKER_URL")
+    support_whatsapp_number: str = Field(default="6282137138687", alias="SUPPORT_WHATSAPP_NUMBER")
+    default_signup_points: int = Field(default=0, alias="DEFAULT_SIGNUP_POINTS")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

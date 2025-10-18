@@ -19,8 +19,10 @@ class CampaignBase(BaseModel):
 
     @field_validator("throttle_max_seconds")
     @classmethod
-    def validate_throttle(cls, value: int, info: dict) -> int:  # noqa: D417
-        min_value = info["data"].get("throttle_min_seconds", 1)
+    def validate_throttle(cls, value: int, info) -> int:  # noqa: D417
+        min_value = 1
+        if hasattr(info, "data") and info.data is not None:
+            min_value = info.data.get("throttle_min_seconds", min_value)
         if value < min_value:
             raise ValueError("throttle_max_seconds cannot be less than min value")
         return value
@@ -55,6 +57,8 @@ class CampaignRecipientRead(BaseModel):
     read_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CampaignProgress(BaseModel):
