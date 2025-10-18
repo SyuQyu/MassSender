@@ -26,3 +26,24 @@ class SessionStatusResponse(BaseModel):
     status: SessionStatus
     expires_at: datetime | None
     last_seen_at: datetime | None
+
+
+class WhatsAppGroup(BaseModel):
+    id: str
+    name: str | None = None
+    participant_count: int
+
+
+class WhatsAppGroupMember(BaseModel):
+    phone_e164: str
+    name: str | None = None
+
+
+class GroupMessageRequest(BaseModel):
+    body: str | None = None
+    media_url: str | None = None
+    document_url: str | None = None
+
+
+class GroupMemberMessageRequest(GroupMessageRequest):
+    phone_e164: str

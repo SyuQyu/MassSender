@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.wallet import WalletTxnType
 
@@ -12,11 +12,17 @@ class WalletSummary(BaseModel):
     points_per_recipient: int
     max_daily_recipients: int
     max_campaign_recipients: int
+    expiring_points: int
+    next_expiry_at: datetime | None
 
 
 class WalletTopupRequest(BaseModel):
     points: int | None = Field(default=None, ge=1)
     plan_type: str | None = None
+
+
+class WalletCoinPurchase(BaseModel):
+    points: int = Field(ge=1)
 
 
 class WalletTransactionRead(BaseModel):
@@ -25,5 +31,7 @@ class WalletTransactionRead(BaseModel):
     points: int
     balance_after: int
     reference: str | None
+    expires_at: datetime | None
     created_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)

@@ -32,6 +32,14 @@ export default function WalletPage() {
     },
   });
 
+  const coinMutation = useMutation({
+    mutationFn: (points: number) => apiClient.post<WalletSummary>("/wallet/coins", { points }),
+    onSuccess: () => {
+      void refetchSummary();
+      void refetchTransactions();
+    },
+  });
+
   return (
     <div className="space-y-8">
       <div className="space-y-2">
@@ -45,6 +53,9 @@ export default function WalletPage() {
         onTopup={async (payload) => {
           await mutation.mutateAsync(payload);
         }}
+        onPurchaseCoins={async (points) => {
+          await coinMutation.mutateAsync(points);
+        }}
       />
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-slate-900">Transactions</h2>
@@ -56,6 +67,7 @@ export default function WalletPage() {
                 <th className="px-4 py-2">Points</th>
                 <th className="px-4 py-2">Balance after</th>
                 <th className="px-4 py-2">Reference</th>
+                <th className="px-4 py-2">Expires</th>
                 <th className="px-4 py-2">When</th>
               </tr>
             </thead>
@@ -66,11 +78,14 @@ export default function WalletPage() {
                   <td className="px-4 py-2 text-slate-700">{txn.points}</td>
                   <td className="px-4 py-2 text-slate-700">{txn.balance_after}</td>
                   <td className="px-4 py-2 text-xs text-slate-500">{txn.reference ?? "--"}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">
+                    {txn.expires_at ? new Date(txn.expires_at).toLocaleString() : "--"}
+                  </td>
                   <td className="px-4 py-2 text-xs text-slate-500">{new Date(txn.created_at).toLocaleString()}</td>
                 </tr>
               )) ?? (
                 <tr>
-                  <td className="px-4 py-2 text-sm text-slate-500" colSpan={5}>
+                  <td className="px-4 py-2 text-sm text-slate-500" colSpan={6}>
                     No transactions yet
                   </td>
                 </tr>

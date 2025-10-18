@@ -97,6 +97,8 @@ export type WalletSummary = {
   points_per_recipient: number;
   max_daily_recipients: number;
   max_campaign_recipients: number;
+  expiring_points: number;
+  next_expiry_at?: string | null;
 };
 
 export type WalletTransaction = {
@@ -105,7 +107,19 @@ export type WalletTransaction = {
   points: number;
   balance_after: number;
   reference?: string | null;
+  expires_at?: string | null;
   created_at: string;
+};
+
+export type WhatsAppGroup = {
+  id: string;
+  name?: string | null;
+  participant_count: number;
+};
+
+export type WhatsAppMember = {
+  phone_e164: string;
+  name?: string | null;
 };
 
 export type AutoResponseRule = {

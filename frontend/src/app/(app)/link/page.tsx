@@ -1,6 +1,6 @@
 "use client";
 
-import { QRCodePanel } from "@/components/qr-code-panel";
+import { ConnectionsPanel } from "@/components/connections-panel";
 
 export default function LinkPage() {
   return (
@@ -11,7 +11,7 @@ export default function LinkPage() {
           Scan the QR to authorise this browser with WhatsApp Web. Sessions expire after seven idle days.
         </p>
       </div>
-      <QRCodePanel />
+      <ConnectionsPanel />
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
         <strong>Reminder:</strong> This prototype is for opt-in cohorts only. Respect WhatsApp daily send limits and un-link when finished.
       </div>

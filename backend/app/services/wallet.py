@@ -16,14 +16,36 @@ PLAN_TYPES = {
 }
 
 
-async def get_wallet_summary(user: User) -> WalletSummary:
+async def get_wallet_summary(db: AsyncSession, user: User) -> WalletSummary:
     settings = get_settings()
+    now = datetime.now(timezone.utc)
+
+    result = await db.execute(
+        select(WalletTransaction)
+        .where(
+            WalletTransaction.user_id == user.id,
+            WalletTransaction.expires_at.is_not(None),
+            WalletTransaction.expire_processed.is_(False),
+            WalletTransaction.points > 0,
+        )
+        .order_by(WalletTransaction.expires_at.asc())
+    )
+    expiring_txns = list(result.scalars().all())
+    expiring_points = sum(tx.points for tx in expiring_txns if tx.expires_at and tx.expires_at > now)
+    next_expiry_at = None
+    for tx in expiring_txns:
+        if tx.expires_at and tx.expires_at > now:
+            next_expiry_at = tx.expires_at
+            break
+
     return WalletSummary(
         balance=user.points_balance,
         plan_expires_at=user.plan_expires_at,
         points_per_recipient=settings.points_per_recipient,
         max_daily_recipients=settings.max_daily_recipients,
         max_campaign_recipients=settings.max_campaign_recipients,
+        expiring_points=expiring_points,
+        next_expiry_at=next_expiry_at,
     )
 
 
@@ -49,7 +71,7 @@ async def wallet_topup(db: AsyncSession, user: User, payload: WalletTopupRequest
 
     await db.commit()
     await db.refresh(user)
-    return await get_wallet_summary(user)
+    return await get_wallet_summary(db, user)
 
 
 async def list_wallet_transactions(db: AsyncSession, user: User) -> list[WalletTransaction]:
@@ -60,3 +82,20 @@ async def list_wallet_transactions(db: AsyncSession, user: User) -> list[WalletT
     )
     return list(result.scalars().all())
 
+
+async def purchase_coins(db: AsyncSession, user: User, points: int) -> WalletSummary:
+    if points <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Points must be positive")
+
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    await create_wallet_transaction(
+        db,
+        user,
+        WalletTxnType.COIN_PURCHASE,
+        points,
+        reference="coins",
+        expires_at=expires_at,
+    )
+    await db.commit()
+    await db.refresh(user)
+    return await get_wallet_summary(db, user)

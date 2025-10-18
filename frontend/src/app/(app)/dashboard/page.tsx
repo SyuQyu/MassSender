@@ -46,6 +46,10 @@ export default function DashboardPage() {
           <p className="text-sm uppercase tracking-wide text-slate-200">Balance</p>
           <h2 className="mt-3 text-3xl font-semibold">{wallet?.balance ?? 0} pts</h2>
           <p className="mt-2 text-sm text-slate-300">{wallet?.points_per_recipient ?? 2} pts per recipient</p>
+          <p className="mt-2 text-xs text-slate-200">
+            Expiring coins: {wallet?.expiring_points ?? 0}
+            {wallet?.next_expiry_at ? ` (next ${dayjs(wallet.next_expiry_at).fromNow()})` : ""}
+          </p>
           <Link href="/billing/wallet" className="mt-5 inline-flex items-center text-sm font-semibold text-white/90 hover:underline">
             Manage wallet →
           </Link>

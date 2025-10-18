@@ -49,7 +49,13 @@ async def authenticate_user(db: AsyncSession, payload: LoginRequest) -> User:
 
 
 async def create_wallet_transaction(
-    db: AsyncSession, user: User, txn_type: WalletTxnType, points: int, reference: str | None = None
+    db: AsyncSession,
+    user: User,
+    txn_type: WalletTxnType,
+    points: int,
+    reference: str | None = None,
+    *,
+    expires_at: datetime | None = None,
 ) -> WalletTransaction:
     user.points_balance += points
     txn = WalletTransaction(
@@ -58,6 +64,8 @@ async def create_wallet_transaction(
         points=points,
         balance_after=user.points_balance,
         reference=reference,
+        expires_at=expires_at,
+        expire_processed=expires_at is None,
     )
     db.add(txn)
     await db.flush()

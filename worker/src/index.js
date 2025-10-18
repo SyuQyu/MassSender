@@ -13,6 +13,40 @@ let currentStatus = 'initializing';
 let qrDataUrl = null;
 let lastSeen = null;
 
+async function listGroups() {
+  const chats = await client.getChats();
+  return chats
+    .filter((chat) => chat.isGroup)
+    .map((chat) => ({
+      id: chat.id._serialized,
+      name: chat.name || chat.contact?.pushname || chat.contact?.name || chat.id.user,
+      participant_count: chat.participants ? chat.participants.length : 0,
+    }));
+}
+
+async function sendGroupMessage({ groupId, body, mediaUrl, documentUrl }) {
+  const tasks = [];
+
+  if (body && body.trim()) {
+    tasks.push(client.sendMessage(groupId, body.trim()));
+  }
+
+  if (mediaUrl) {
+    tasks.push(sendMedia(groupId, mediaUrl));
+  }
+
+  if (documentUrl) {
+    tasks.push(sendMedia(groupId, documentUrl, true));
+  }
+
+  if (tasks.length === 0) {
+    throw new Error('Nothing to send');
+  }
+
+  await Promise.all(tasks);
+  lastSeen = new Date().toISOString();
+}
+
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: AUTH_PATH }),
   puppeteer: {
@@ -111,6 +145,59 @@ app.post('/group-members', async (req, res) => {
   } catch (err) {
     console.error('Failed to fetch group members', err);
     res.status(500).json({ error: 'Failed to fetch group members' });
+  }
+});
+
+app.get('/groups', async (_req, res) => {
+  if (currentStatus !== 'linked') {
+    return res.status(409).json({ error: 'WhatsApp session not linked' });
+  }
+  try {
+    const groups = await listGroups();
+    res.json({ groups });
+  } catch (err) {
+    console.error('Failed to list groups', err);
+    res.status(500).json({ error: 'Failed to list groups' });
+  }
+});
+
+app.post('/groups/send', async (req, res) => {
+  if (currentStatus !== 'linked') {
+    return res.status(409).json({ error: 'WhatsApp session not linked' });
+  }
+
+  const { groupId, body, mediaUrl, documentUrl } = req.body || {};
+  if (!groupId) {
+    return res.status(400).json({ error: 'groupId is required' });
+  }
+
+  try {
+    await sendGroupMessage({ groupId, body, mediaUrl, documentUrl });
+    res.json({ status: 'sent' });
+  } catch (err) {
+    console.error('Failed to send group message', err);
+    const statusCode = err.retryable ? 503 : 400;
+    res.status(statusCode).json({ error: err.message || 'Failed to send group message' });
+  }
+});
+
+app.post('/logout', async (_req, res) => {
+  try {
+    await client.logout();
+  } catch (err) {
+    console.warn('Logout error', err);
+  }
+
+  currentStatus = 'disconnected';
+  qrDataUrl = null;
+  lastSeen = null;
+
+  try {
+    client.initialize();
+    res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('Failed to reinitialize client', err);
+    res.status(500).json({ error: 'Failed to reinitialize client' });
   }
 });
 

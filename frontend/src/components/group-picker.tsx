@@ -1,14 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type GroupPickerProps = {
   onSubmit: (groupName: string) => void;
   loading?: boolean;
+  value?: string;
+  onChange?: (name: string) => void;
 };
 
-export const GroupPicker = ({ onSubmit, loading }: GroupPickerProps) => {
-  const [groupName, setGroupName] = useState("");
+export const GroupPicker = ({ onSubmit, loading, value, onChange }: GroupPickerProps) => {
+  const [internalValue, setInternalValue] = useState(value ?? "");
+
+  useEffect(() => {
+    if (value !== undefined) {
+      setInternalValue(value);
+    }
+  }, [value]);
+
+  const groupName = value ?? internalValue;
+
+  const handleChange = (next: string) => {
+    if (onChange) {
+      onChange(next);
+    } else {
+      setInternalValue(next);
+    }
+  };
 
   return (
     <form
@@ -22,7 +40,7 @@ export const GroupPicker = ({ onSubmit, loading }: GroupPickerProps) => {
         WhatsApp group name or invite link
         <input
           value={groupName}
-          onChange={(event) => setGroupName(event.target.value)}
+          onChange={(event) => handleChange(event.target.value)}
           className="rounded-lg border border-slate-200 px-3 py-2 shadow-sm focus:border-slate-400 focus:outline-none"
           placeholder="e.g. Class of 2026"
           required
