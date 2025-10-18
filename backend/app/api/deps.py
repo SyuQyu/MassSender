@@ -7,6 +7,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.security import decode_token
 from app.db.session import get_session
 from app.models import User
@@ -49,3 +50,10 @@ async def get_current_active_user(user: Annotated[User, Depends(get_current_user
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
     return user
 
+
+async def get_points_admin(user: Annotated[User, Depends(get_current_active_user)]) -> User:
+    settings = get_settings()
+    admin_emails = {email.lower() for email in settings.points_admin_emails}
+    if not admin_emails or user.email.lower() not in admin_emails:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to manage points")
+    return user

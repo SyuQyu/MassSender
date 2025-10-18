@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     whatsapp_worker_url: AnyHttpUrl = Field(default="http://localhost:5005", alias="WHATSAPP_WORKER_URL")
     support_whatsapp_number: str = Field(default="6282137138687", alias="SUPPORT_WHATSAPP_NUMBER")
     default_signup_points: int = Field(default=0, alias="DEFAULT_SIGNUP_POINTS")
+    points_admin_emails_raw: str | list[str] | None = Field(default=None, alias="POINTS_ADMIN_EMAILS")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -53,6 +54,16 @@ class Settings(BaseSettings):
     @property
     def campaign_failure_backoff_schedule(self) -> List[int]:
         return [int(value.strip()) for value in self.campaign_failure_backoff.split(",") if value.strip()]
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def points_admin_emails(self) -> list[str]:
+        value = self.points_admin_emails_raw
+        if value is None or value == "":
+            return []
+        if isinstance(value, list):
+            return [item.strip() for item in value if item and item.strip()]
+        return [item.strip() for item in str(value).split(",") if item and item.strip()]
 
 
 @lru_cache(maxsize=1)

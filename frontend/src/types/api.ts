@@ -99,6 +99,8 @@ export type WalletSummary = {
   max_campaign_recipients: number;
   expiring_points: number;
   next_expiry_at?: string | null;
+  support_whatsapp_number?: string | null;
+  can_allocate_points: boolean;
 };
 
 export type WalletTransaction = {
@@ -109,6 +111,14 @@ export type WalletTransaction = {
   reference?: string | null;
   expires_at?: string | null;
   created_at: string;
+};
+
+export type WalletGrantResult = {
+  transaction_id: string;
+  target_email: string;
+  granted_points: number;
+  new_balance: number;
+  expires_at?: string | null;
 };
 
 export type WhatsAppGroup = {

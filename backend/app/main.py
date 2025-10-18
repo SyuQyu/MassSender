@@ -5,6 +5,8 @@ import re
 from app.api.api_v1 import api_router
 from app.core.config import get_settings
 from app.core.scheduler import shutdown_scheduler, start_scheduler
+from app.db.schema import ensure_wallet_schema
+from app.db.session import engine as async_engine
 
 
 def create_app() -> FastAPI:
@@ -52,6 +54,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _startup() -> None:
+        await ensure_wallet_schema(async_engine)
         start_scheduler()
 
     @app.on_event("shutdown")

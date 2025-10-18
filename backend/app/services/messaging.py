@@ -116,7 +116,8 @@ def send_campaign_message(*, phone: str, body: str, media_url: str | None, docum
 
 def _send_via_worker(*, phone: str, body: str, media_url: str | None, document_url: str | None) -> None:
     settings = get_settings()
-    url = settings.whatsapp_worker_url.rstrip("/") + "/send"
+    base_url = settings.whatsapp_worker_url.unicode_string().rstrip("/")
+    url = f"{base_url}/send"
     payload = {
         "to": phone,
         "body": body,
