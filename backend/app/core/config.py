@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     support_whatsapp_number: str = Field(default="6282137138687", alias="SUPPORT_WHATSAPP_NUMBER")
     default_signup_points: int = Field(default=0, alias="DEFAULT_SIGNUP_POINTS")
     points_admin_emails_raw: str | list[str] | None = Field(default=None, alias="POINTS_ADMIN_EMAILS")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    openai_system_prompt: str = Field(
+        default="You write concise, friendly WhatsApp messages in Indonesian unless instructed otherwise.",
+        alias="OPENAI_SYSTEM_PROMPT",
+    )
+    gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="models/gemini-2.5-flash-lite", alias="GEMINI_MODEL")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

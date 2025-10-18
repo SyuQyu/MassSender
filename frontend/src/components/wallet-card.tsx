@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 
-import type { WalletSummary } from "@/types/api";
+import { UserSearchSelect } from "@/components/user-search-select";
+import type { UserSearchResult, WalletSummary } from "@/types/api";
 
 type WalletCardProps = {
   summary: WalletSummary | undefined;
@@ -20,7 +21,7 @@ const expiryOptions = [5, 15, 30];
 export const WalletCard = ({ summary, onTopup, onPurchaseCoins, onGrant }: WalletCardProps) => {
   const [customPoints, setCustomPoints] = useState(200);
   const [coinPoints, setCoinPoints] = useState(200);
-  const [grantEmail, setGrantEmail] = useState("");
+  const [grantUser, setGrantUser] = useState<UserSearchResult | null>(null);
   const [grantPoints, setGrantPoints] = useState(200);
   const [manualExpiry, setManualExpiry] = useState<number>(30);
   const [grantExpiry, setGrantExpiry] = useState<number>(30);
@@ -59,13 +60,13 @@ export const WalletCard = ({ summary, onTopup, onPurchaseCoins, onGrant }: Walle
   };
 
   const handleGrant = async () => {
-    if (!grantEmail) {
-      setMessage("Please provide a recipient email");
+    if (!grantUser) {
+      setMessage("Select a user before granting points.");
       return;
     }
-    await onGrant({ user_email: grantEmail, points: grantPoints, expires_in_days: grantExpiry });
-    setMessage(`Granted ${grantPoints} pts to ${grantEmail} (expires in ${grantExpiry} days)`);
-    setGrantEmail("");
+    await onGrant({ user_email: grantUser.email, points: grantPoints, expires_in_days: grantExpiry });
+    setMessage(`Granted ${grantPoints} pts to ${grantUser.email} (expires in ${grantExpiry} days)`);
+    setGrantUser(null);
   };
 
   return (
@@ -200,12 +201,10 @@ export const WalletCard = ({ summary, onTopup, onPurchaseCoins, onGrant }: Walle
                   Use this when onboarding new accounts or applying manual adjustments.
                 </p>
                 <div className="mt-3 space-y-2">
-                  <input
-                    type="email"
-                    placeholder="user@example.com"
-                    value={grantEmail}
-                    onChange={(event) => setGrantEmail(event.target.value)}
-                    className="w-full rounded-lg border border-emerald-200 px-3 py-2 text-sm shadow-sm focus:border-emerald-400 focus:outline-none"
+                  <UserSearchSelect
+                    value={grantUser}
+                    onChange={setGrantUser}
+                    helperText="Search by name or email to locate the recipient."
                   />
                   <div className="flex gap-2">
                     <input
@@ -218,7 +217,7 @@ export const WalletCard = ({ summary, onTopup, onPurchaseCoins, onGrant }: Walle
                     <button
                       onClick={handleGrant}
                       className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-300"
-                      disabled={!grantEmail}
+                      disabled={!grantUser}
                     >
                       Grant points
                     </button>

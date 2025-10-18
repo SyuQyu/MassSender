@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { AutoResponseRule, TimeWindow } from "@/types/api";
+import { AiAssistant } from "@/components/ai-assistant";
 
 type RuleBuilderProps = {
   onSubmit: (rule: Omit<AutoResponseRule, "id" | "created_at" | "updated_at">) => Promise<void>;
   submitLabel?: string;
   initialRule?: AutoResponseRule | null;
   onCancel?: () => void;
+  aiEnabled?: boolean;
+  aiStatusMessage?: string;
 };
 
 const defaultWindow: TimeWindow = {
@@ -28,7 +31,14 @@ const fallbackRule: Omit<AutoResponseRule, "id" | "created_at" | "updated_at"> =
   active_windows: [],
 };
 
-export const RuleBuilder = ({ onSubmit, submitLabel = "Save rule", initialRule, onCancel }: RuleBuilderProps) => {
+export const RuleBuilder = ({
+  onSubmit,
+  submitLabel = "Save rule",
+  initialRule,
+  onCancel,
+  aiEnabled = true,
+  aiStatusMessage,
+}: RuleBuilderProps) => {
   const rule = initialRule ? { ...fallbackRule, ...initialRule } : fallbackRule;
 
   const [name, setName] = useState(rule.name);
@@ -38,9 +48,7 @@ export const RuleBuilder = ({ onSubmit, submitLabel = "Save rule", initialRule, 
   const [cooldown, setCooldown] = useState(rule.cooldown_seconds ?? 0);
   const [active, setActive] = useState(rule.active);
   const [useWindow, setUseWindow] = useState(rule.active_windows.length > 0);
-  const [windowConfig, setWindowConfig] = useState<TimeWindow>(
-    rule.active_windows[0] ?? defaultWindow,
-  );
+  const [windowConfig, setWindowConfig] = useState<TimeWindow>(rule.active_windows[0] ?? defaultWindow);
 
   useEffect(() => {
     if (!initialRule) {
@@ -92,6 +100,21 @@ export const RuleBuilder = ({ onSubmit, submitLabel = "Save rule", initialRule, 
     }
   };
 
+  const buildAiPrompt = useCallback(() => {
+    const instructions = [
+      "Write a WhatsApp auto-response in Indonesian unless otherwise specified.",
+      `Trigger type: ${triggerType}.`,
+      `Trigger value: ${triggerValue}.`,
+      active ? "The rule is active." : "The rule is currently disabled but should still produce a response.",
+    ];
+    if (responseText.trim()) {
+      instructions.push("Current draft:");
+      instructions.push(responseText.trim());
+    }
+    instructions.push("Use a friendly, concise tone.");
+    return instructions.join("\n");
+  }, [triggerType, triggerValue, active, responseText]);
+
   return (
     <form className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-5" onSubmit={handleSubmit}>
       <div className="grid gap-4 md:grid-cols-2">
@@ -125,6 +148,15 @@ export const RuleBuilder = ({ onSubmit, submitLabel = "Save rule", initialRule, 
       </div>
       <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
         Response text
+        <AiAssistant
+          topic="automation_response"
+          buildPrompt={buildAiPrompt}
+          onApply={setResponseText}
+          context={{ rule_name: name, trigger_type: triggerType, trigger_value: triggerValue }}
+          buttonLabel="Ask AI for response"
+          disabled={!aiEnabled}
+          disabledMessage={aiStatusMessage}
+        />
         <textarea
           value={responseText}
           onChange={(event) => setResponseText(event.target.value)}

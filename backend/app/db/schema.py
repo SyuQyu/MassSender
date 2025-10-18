@@ -18,6 +18,12 @@ _WALLET_ENUM_ALTERS = (
     "ALTER TYPE wallet_txn_type ADD VALUE IF NOT EXISTS 'expire'",
 )
 
+_USER_ALTERS = (
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_access_ends_at TIMESTAMPTZ",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_plan_name VARCHAR(64)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_trial_started_at TIMESTAMPTZ",
+)
+
 _SESSION_ALTERS = (
     "ALTER TABLE wa_sessions ADD COLUMN IF NOT EXISTS label VARCHAR(255)",
     "UPDATE wa_sessions SET label = COALESCE(label, 'Primary')",
@@ -85,6 +91,7 @@ WHERE c.session_id IS NULL
 async def ensure_wallet_schema(async_engine: AsyncEngine) -> None:
     async with async_engine.begin() as conn:
         await _ensure_wallet_async(conn)
+        await _ensure_users_async(conn)
         await _ensure_sessions_async(conn)
         await _ensure_campaigns_async(conn)
 
@@ -92,6 +99,7 @@ async def ensure_wallet_schema(async_engine: AsyncEngine) -> None:
 def ensure_wallet_schema_sync(sync_engine: Engine) -> None:
     with sync_engine.begin() as conn:
         _ensure_wallet_sync(conn)
+        _ensure_users_sync(conn)
         _ensure_sessions_sync(conn)
         _ensure_campaigns_sync(conn)
 
@@ -111,6 +119,20 @@ def _ensure_wallet_sync(conn) -> None:
     for statement in _WALLET_ALTERS:
         conn.execute(text(statement))
     for statement in _WALLET_ENUM_ALTERS:
+        conn.execute(text(statement))
+
+
+async def _ensure_users_async(conn) -> None:
+    if not await _table_exists_async(conn, "users"):
+        return
+    for statement in _USER_ALTERS:
+        await conn.execute(text(statement))
+
+
+def _ensure_users_sync(conn) -> None:
+    if not _table_exists_sync(conn, "users"):
+        return
+    for statement in _USER_ALTERS:
         conn.execute(text(statement))
 
 

@@ -25,6 +25,14 @@ class UserRead(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserSearchResult(BaseModel):
+    id: UUID
+    email: EmailStr
+    full_name: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str

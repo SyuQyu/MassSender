@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { TemplateEditor } from "@/components/template-editor";
+import { AiAssistant } from "@/components/ai-assistant";
 import { apiClient } from "@/lib/api-client";
-import type { Campaign, ContactList, Session } from "@/types/api";
+import type { AiSubscriptionStatus, Campaign, ContactList, Session } from "@/types/api";
 
 const fetchLists = async () => {
   const { data } = await apiClient.get<ContactList[]>("/contacts/lists");
@@ -18,10 +19,16 @@ const fetchSessions = async () => {
   return data;
 };
 
+const fetchAiStatus = async () => {
+  const { data } = await apiClient.get<AiSubscriptionStatus>("/ai/status");
+  return data;
+};
+
 export default function NewCampaignPage() {
   const router = useRouter();
   const { data: lists } = useQuery({ queryKey: ["contact-lists"], queryFn: fetchLists });
   const { data: sessions } = useQuery({ queryKey: ["wa", "sessions"], queryFn: fetchSessions });
+  const { data: aiStatus } = useQuery({ queryKey: ["ai", "status"], queryFn: fetchAiStatus });
   const [listId, setListId] = useState<string>("");
   const [name, setName] = useState("Reminder blast");
   const [body, setBody] = useState("Hello {{name}}, just a friendly reminder about our session tomorrow.");
@@ -61,11 +68,29 @@ export default function NewCampaignPage() {
     },
   });
 
+  const buildAiPrompt = useCallback(() => {
+    const lines = [
+      "Compose a WhatsApp campaign message in Indonesian.",
+      `Campaign name: ${name}.`,
+      listId ? `List selected: ${listId}.` : "No list selected yet.",
+      mediaUrl ? "A media link will be attached." : "No media attachment.",
+      `Current draft: ${body || "(empty)"}`,
+      "Message should stay concise, friendly, and personalised using {{name}} placeholder when appropriate.",
+    ];
+    return lines.join("\n");
+  }, [name, listId, mediaUrl, body]);
+
   return (
     <div className="space-y-8">
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold text-slate-900">Create campaign</h1>
         <p className="text-sm text-slate-500">Choose a contact list, craft your template, and set media/throttle preferences.</p>
+        {aiStatus ? (
+          <p className="text-xs text-slate-500">
+            AI assistant: {aiStatus.active ? "Active" : aiStatus.trial_available ? "Trial available (starts on first use)" : "Inactive"}
+            {aiStatus.expires_at ? ` · expires ${new Date(aiStatus.expires_at).toLocaleString()}` : ""}
+          </p>
+        ) : null}
       </div>
       <div className="space-y-4">
         <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
@@ -118,6 +143,21 @@ export default function NewCampaignPage() {
           body={body}
           onChange={setBody}
           variables={Array.from(new Set(Array.from(body.matchAll(/{{(.*?)}}/g)).map((match) => match[1])))}
+        />
+        <AiAssistant
+          topic="campaign_message"
+          buildPrompt={buildAiPrompt}
+          onApply={setBody}
+          context={{ campaign_name: name, has_media: Boolean(mediaUrl) }}
+          buttonLabel="Ask AI for template"
+          disabled={!(aiStatus?.active || aiStatus?.trial_available)}
+          disabledMessage={
+            aiStatus?.active
+              ? undefined
+              : aiStatus?.trial_available
+                ? "Trial available: using AI will activate a 1-day trial."
+                : "AI assistant inactive. Contact support to enable this feature."
+          }
         />
         <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
           Optional media URL

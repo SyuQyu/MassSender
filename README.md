@@ -37,6 +37,7 @@ Environment variables are defined in `.env.example`. Key values:
 - Safety knobs: `POINTS_PER_RECIPIENT`, `MAX_CAMPAIGN_RECIPIENTS`, `MAX_DAILY_RECIPIENTS`
 - WhatsApp Web worker (default): set `WHATSAPP_WORKER_URL` (default `http://localhost:5005`).
 - Optional WhatsApp Cloud API mode: set `OFFICIAL_MODE=true` and provide `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_TOKEN`, and optionally override `WHATSAPP_API_BASE_URL`.
+- AI assistance (optional): set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) to enable message drafting suggestions. You can also set `GEMINI_API_KEY` (and `GEMINI_MODEL`) as a fallback provider if OpenAI is unavailable.
 
 Run the Python queue worker in a separate terminal:
 

@@ -5,15 +5,21 @@ import { useState } from "react";
 
 import { RuleBuilder } from "@/components/rule-builder";
 import { apiClient } from "@/lib/api-client";
-import type { AutoResponseRule } from "@/types/api";
+import type { AiSubscriptionStatus, AutoResponseRule } from "@/types/api";
 
 const fetchRules = async () => {
   const { data } = await apiClient.get<AutoResponseRule[]>("/automation/rules");
   return data;
 };
 
+const fetchAiStatus = async () => {
+  const { data } = await apiClient.get<AiSubscriptionStatus>("/ai/status");
+  return data;
+};
+
 export default function AutomationRulesPage() {
   const { data: rules, refetch } = useQuery({ queryKey: ["automation-rules"], queryFn: fetchRules });
+  const { data: aiStatus } = useQuery({ queryKey: ["ai", "status"], queryFn: fetchAiStatus });
   const [editingRule, setEditingRule] = useState<AutoResponseRule | null>(null);
 
   const createMutation = useMutation({
@@ -52,11 +58,38 @@ export default function AutomationRulesPage() {
         <p className="text-sm text-slate-500">
           Respond to inbound WhatsApp messages based on keywords, contains, or regex triggers. Respect cooldowns to avoid spam.
         </p>
+        {aiStatus ? (
+          <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-600 shadow-sm">
+            <p>
+              AI assistant status:
+              {" "}
+              {aiStatus.active
+                ? "Active"
+                : aiStatus.trial_available
+                  ? "Trial available (activates for 1 day on first use)"
+                  : "Inactive"}
+            </p>
+            {aiStatus.expires_at ? (
+              <p>Expires {new Date(aiStatus.expires_at).toLocaleString()}</p>
+            ) : null}
+            {aiStatus.plan_name ? <p>Plan: {aiStatus.plan_name}</p> : null}
+          </div>
+        ) : null}
       </div>
       <RuleBuilder
         onSubmit={async (payload) => {
           await createMutation.mutateAsync(payload);
         }}
+        aiEnabled={Boolean(aiStatus?.active || aiStatus?.trial_available)}
+        aiStatusMessage={
+          aiStatus?.active
+            ? aiStatus.expires_at
+              ? `AI assistant active · expires ${new Date(aiStatus.expires_at).toLocaleString()}`
+              : "AI assistant active"
+            : aiStatus?.trial_available
+              ? "Trial available: using AI will activate a 1-day trial."
+              : "AI assistant inactive. Contact support to enable this feature."
+        }
       />
       {editingRule ? (
         <RuleBuilder
@@ -66,6 +99,16 @@ export default function AutomationRulesPage() {
             await updateMutation.mutateAsync({ id: editingRule.id, payload });
           }}
           onCancel={() => setEditingRule(null)}
+          aiEnabled={Boolean(aiStatus?.active || aiStatus?.trial_available)}
+          aiStatusMessage={
+            aiStatus?.active
+              ? aiStatus.expires_at
+                ? `AI assistant active · expires ${new Date(aiStatus.expires_at).toLocaleString()}`
+                : "AI assistant active"
+              : aiStatus?.trial_available
+                ? "Trial available: using AI will activate a 1-day trial."
+                : "AI assistant inactive. Contact support to enable this feature."
+          }
         />
       ) : null}
       <div className="space-y-3">

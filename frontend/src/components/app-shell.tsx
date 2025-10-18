@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/contacts/group", label: "Group Import" },
   { href: "/campaigns/new", label: "New Campaign" },
   { href: "/automation/rules", label: "Automation" },
+  { href: "/ai", label: "AI Assistant" },
   { href: "/settings/schedule", label: "Active Hours" },
   { href: "/billing/wallet", label: "Wallet" },
 ];

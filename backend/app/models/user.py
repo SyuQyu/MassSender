@@ -22,6 +22,9 @@ class User(Base):
     points_balance: Mapped[int] = mapped_column(Integer, default=0)
     plan_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     consent_acceptance_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_access_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_plan_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ai_trial_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -33,4 +36,3 @@ class User(Base):
     wallet_transactions: Mapped[list["WalletTransaction"]] = relationship(back_populates="user")
     rules: Mapped[list["AutoResponseRule"]] = relationship(back_populates="user")
     schedules: Mapped[list["ActiveSchedule"]] = relationship(back_populates="user")
-
